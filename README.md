@@ -1,3 +1,3 @@
-# F4X Empire Music Bot
+# F4X Empire High-End Bot
 Owner: Naeem
-Status: Running on Render with FFmpeg
+Features: 4K Support, Anti-Block Spoofing, Render Cloud Hosted.
