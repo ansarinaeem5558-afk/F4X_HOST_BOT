@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-# FFmpeg install karne ke liye zaroori commands
+# FFmpeg install karne ke liye commands
 RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
 
 WORKDIR /app
