@@ -2,7 +2,8 @@ import os, yt_dlp, asyncio, uuid
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
-BOT_TOKEN = os.getenv("BOT_TOKEN") or "8421035286:AAHAXb-OI-kqiQnM7UL42o1JervTtQFT9fg"
+# --- CONFIGURATION ---
+BOT_TOKEN = "8421035286:AAHAXb-OI-kqiQnM7UL42o1JervTtQFT9fg"
 OWNER_TAG = "👑 Owner: Naeem (F4X Empire)"
 
 def download_engine(url, mode, f_id=None):
@@ -16,6 +17,7 @@ def download_engine(url, mode, f_id=None):
         opts['format'] = 'bestaudio/best'
         opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'm4a'}]
     else:
+        # High quality merging ke liye FFmpeg zaroori hai
         opts['format'] = f"{f_id}+bestaudio/best" if f_id else 'bestvideo+bestaudio/best'
 
     with yt_dlp.YoutubeDL(opts) as ydl:
@@ -23,12 +25,12 @@ def download_engine(url, mode, f_id=None):
         return ydl.prepare_filename(info)
 
 async def start(update, context):
-    await update.message.reply_text(f"🔥 **F4X Cloud Bot Ready!**\nNaeem bhai, link bhejien.\n\n{OWNER_TAG}")
+    await update.message.reply_text(f"🔥 **F4X Cloud Bot Ready!**\nNaeem bhai, link bhejien ya gane ka naam likhein.\n\n{OWNER_TAG}")
 
 async def handle_msg(update, context):
     query = update.message.text
     if "playlist" in query: return await update.message.reply_text("❌ Playlist allowed nahi hai.")
-    status = await update.message.reply_text("🔍 Analyzing...")
+    status = await update.message.reply_text("🔍 Analyzing request...")
     try:
         is_url = query.startswith("http")
         s_query = query if is_url else f"ytsearch1:{query}"
@@ -39,8 +41,8 @@ async def handle_msg(update, context):
         btns = [[InlineKeyboardButton("🎵 Audio", callback_data=f"mp3|audio|{v_url}")],
                 [InlineKeyboardButton("🎥 720p", callback_data=f"mp4|22|{v_url}"),
                  InlineKeyboardButton("🎥 1080p", callback_data=f"mp4|137|{v_url}")]]
-        await status.edit_text(f"🎬 {info['title'][:40]}\n\nQuality select karein:", reply_markup=InlineKeyboardMarkup(btns))
-    except: await status.edit_text("❌ Nahi mila.")
+        await status.edit_text(f"🎬 {info['title'][:40]}...\n\nSelect Quality:", reply_markup=InlineKeyboardMarkup(btns))
+    except: await status.edit_text("❌ Nahi mila bhai.")
 
 async def button_handler(update, context):
     query = update.callback_query
