@@ -1,97 +1,63 @@
-import sys
-import asyncio
-import os
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors import UserNotParticipant
-from flask import Flask
-from threading import Thread
+import os, yt_dlp, asyncio, uuid
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
-# --- 🌐 WEB SERVER FOR RENDER ---
-web_app = Flask(__name__)
+BOT_TOKEN = os.getenv("BOT_TOKEN") or "8421035286:AAHAXb-OI-kqiQnM7UL42o1JervTtQFT9fg"
+OWNER_TAG = "👑 Owner: Naeem (F4X Empire)"
 
-@web_app.route('/')
-def home():
-    return "Bot is Running!"
+def download_engine(url, mode, f_id=None):
+    uid = str(uuid.uuid4())[:8]
+    tmpl = f"f4x_{uid}.%(ext)s"
+    opts = {
+        'outtmpl': tmpl, 'noplaylist': True, 'quiet': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+    }
+    if mode == 'mp3':
+        opts['format'] = 'bestaudio/best'
+        opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'm4a'}]
+    else:
+        opts['format'] = f"{f_id}+bestaudio/best" if f_id else 'bestvideo+bestaudio/best'
 
-def run_web():
-    # Render automatically sets the PORT environment variable
-    port = int(os.environ.get("PORT", 8080))
-    web_app.run(host='0.0.0.0', port=port)
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        return ydl.prepare_filename(info)
 
-# --- ⚙️ CONFIGURATION ---
-API_ID = 37314366
-API_HASH = "bd4c934697e7e91942ac911a5a287b46"
-BOT_TOKEN = "8484278887:AAEF3HBf2WIi2A2kXKx2B_SNRfcWv5WWmAg"
-OWNER_ID = 8448533037
-FORCE_CHANNEL = "Anysnapupdate" 
-FORCE_GROUP = "Anysnapsupport"
+async def start(update, context):
+    await update.message.reply_text(f"🔥 **F4X Cloud Bot Ready!**\nNaeem bhai, link bhejien.\n\n{OWNER_TAG}")
 
-app = Client("SafeHostBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-running_processes = {}
-
-async def check_auth(client, message):
-    user_id = message.from_user.id
-    if user_id == OWNER_ID:
-        return True
-    if FORCE_CHANNEL and FORCE_GROUP:
-        try:
-            await client.get_chat_member(FORCE_CHANNEL, user_id)
-            await client.get_chat_member(FORCE_GROUP, user_id)
-            return True
-        except UserNotParticipant:
-            btn = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{FORCE_CHANNEL}")],
-                [InlineKeyboardButton("👥 Join Group", url=f"https://t.me/{FORCE_GROUP}")],
-                [InlineKeyboardButton("✅ Try Again", url=f"https://t.me/{client.me.username}?start=start")]
-            ])
-            await message.reply_text("🔒 **Access Denied:** Please join our channels first.", reply_markup=btn)
-            return False
-        except Exception:
-            return True 
-    return True
-
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    if not await check_auth(client, message): return
-    await message.reply_text("🤖 **Python Script Manager Active**\nBas `.py` file send karein.")
-
-@app.on_message(filters.command("status"))
-async def status(client, message):
-    if not await check_auth(client, message): return
-    active_bots = [f"🟢 `{f}` (PID: {p.pid})" for f, p in running_processes.items() if p.returncode is None]
-    await message.reply_text("**Running Scripts:**\n\n" + "\n".join(active_bots) if active_bots else "💤 No scripts running.")
-
-@app.on_message(filters.command("stop"))
-async def stop_script(client, message):
-    if not await check_auth(client, message): return
+async def handle_msg(update, context):
+    query = update.message.text
+    if "playlist" in query: return await update.message.reply_text("❌ Playlist allowed nahi hai.")
+    status = await update.message.reply_text("🔍 Analyzing...")
     try:
-        filename = message.command[1]
-        if filename in running_processes:
-            running_processes[filename].terminate()
-            del running_processes[filename]
-            await message.reply_text(f"🛑 Stopped `{filename}`.")
-    except:
-        await message.reply_text("⚠️ Usage: `/stop filename.py`")
+        is_url = query.startswith("http")
+        s_query = query if is_url else f"ytsearch1:{query}"
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(s_query, download=False)
+            if 'entries' in info: info = info['entries'][0]
+        v_url = info['webpage_url']
+        btns = [[InlineKeyboardButton("🎵 Audio", callback_data=f"mp3|audio|{v_url}")],
+                [InlineKeyboardButton("🎥 720p", callback_data=f"mp4|22|{v_url}"),
+                 InlineKeyboardButton("🎥 1080p", callback_data=f"mp4|137|{v_url}")]]
+        await status.edit_text(f"🎬 {info['title'][:40]}\n\nQuality select karein:", reply_markup=InlineKeyboardMarkup(btns))
+    except: await status.edit_text("❌ Nahi mila.")
 
-@app.on_message(filters.document)
-async def run_script(client, message):
-    if not await check_auth(client, message): return
-    if not message.document.file_name.endswith(".py"): return
-
-    file_name = message.document.file_name
-    path = await message.download()
-    
+async def button_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    mode, f_id, url = query.data.split("|")
+    st = await query.message.reply_text("⏳ F4X Cloud Downloading...")
     try:
-        log_out = open(f"{file_name}.log", "w")
-        proc = await asyncio.create_subprocess_exec(sys.executable, path, stdout=log_out, stderr=log_out)
-        running_processes[file_name] = proc
-        await message.reply_text(f"✅ **Started:** `{file_name}`\n📝 Logs: `/logs {file_name}`")
-    except Exception as e:
-        await message.reply_text(f"❌ **Error:** {e}")
+        path = await asyncio.get_event_loop().run_in_executor(None, download_engine, url, mode, f_id if f_id != 'audio' else None)
+        await st.edit_text("📤 Uploading...")
+        with open(path, 'rb') as f:
+            if mode == 'mp3': await query.message.reply_audio(audio=f, caption=OWNER_TAG)
+            else: await query.message.reply_video(video=f, caption=OWNER_TAG)
+        if os.path.exists(path): os.remove(path)
+        await st.delete()
+    except Exception as e: await st.edit_text(f"⚠️ Error: {str(e)[:50]}")
 
-if __name__ == "__main__":
-    # Web server ko background thread mein start karein
-    Thread(target=run_web).start()
-    print("✅ Web Server & Bot Starting...")
-    app.run()
+if __name__ == '__main__':
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start)); app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
+    app.add_handler(CallbackQueryHandler(button_handler)); app.run_polling()
