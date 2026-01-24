@@ -1,97 +1,105 @@
-import sys
-import asyncio
 import os
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors import UserNotParticipant
+import yt_dlp
+import asyncio
+import uuid
 from flask import Flask
 from threading import Thread
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
-# --- 🌐 WEB SERVER FOR RENDER ---
-web_app = Flask(__name__)
-
-@web_app.route('/')
+# --- 1. KEEP-ALIVE SYSTEM ---
+app_web = Flask('')
+@app_web.route('/')
 def home():
-    return "Bot is Running!"
+    return "🔥 Naeem bhai, F4X Empire is LIVE!"
 
 def run_web():
-    # Render automatically sets the PORT environment variable
-    port = int(os.environ.get("PORT", 8080))
-    web_app.run(host='0.0.0.0', port=port)
+    app_web.run(host='0.0.0.0', port=8080)
 
-# --- ⚙️ CONFIGURATION ---
-API_ID = 37314366
-API_HASH = "bd4c934697e7e91942ac911a5a287b46"
-BOT_TOKEN = "8484278887:AAEF3HBf2WIi2A2kXKx2B_SNRfcWv5WWmAg"
-OWNER_ID = 8448533037
-FORCE_CHANNEL = "Anysnapupdate" 
-FORCE_GROUP = "Anysnapsupport"
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
 
-app = Client("SafeHostBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-running_processes = {}
+# --- 2. CONFIGURATION ---
+BOT_TOKEN = os.getenv("BOT_TOKEN") or "8421035286:AAHAXb-OI-kqiQnM7UL42o1JervTtQFT9fg"
+OWNER_TAG = "👑 Owner: Naeem (F4X Empire)"
 
-async def check_auth(client, message):
-    user_id = message.from_user.id
-    if user_id == OWNER_ID:
-        return True
-    if FORCE_CHANNEL and FORCE_GROUP:
-        try:
-            await client.get_chat_member(FORCE_CHANNEL, user_id)
-            await client.get_chat_member(FORCE_GROUP, user_id)
-            return True
-        except UserNotParticipant:
-            btn = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{FORCE_CHANNEL}")],
-                [InlineKeyboardButton("👥 Join Group", url=f"https://t.me/{FORCE_GROUP}")],
-                [InlineKeyboardButton("✅ Try Again", url=f"https://t.me/{client.me.username}?start=start")]
-            ])
-            await message.reply_text("🔒 **Access Denied:** Please join our channels first.", reply_markup=btn)
-            return False
-        except Exception:
-            return True 
-    return True
+def download_engine(url, mode, format_id=None):
+    unique_id = str(uuid.uuid4())[:8]
+    file_template = f"f4x_{unique_id}.%(ext)s"
+    
+    ydl_opts = {
+        'outtmpl': file_template,
+        'noplaylist': True,
+        'quiet': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+    }
 
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    if not await check_auth(client, message): return
-    await message.reply_text("🤖 **Python Script Manager Active**\nBas `.py` file send karein.")
+    if mode == 'mp3':
+        ydl_opts['format'] = 'bestaudio/best'
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'm4a'}]
+    else:
+        # Replit cloud server high-res video merge kar lega
+        ydl_opts['format'] = f"{format_id}+bestaudio/best" if format_id else 'bestvideo+bestaudio/best'
 
-@app.on_message(filters.command("status"))
-async def status(client, message):
-    if not await check_auth(client, message): return
-    active_bots = [f"🟢 `{f}` (PID: {p.pid})" for f, p in running_processes.items() if p.returncode is None]
-    await message.reply_text("**Running Scripts:**\n\n" + "\n".join(active_bots) if active_bots else "💤 No scripts running.")
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        return ydl.prepare_filename(info)
 
-@app.on_message(filters.command("stop"))
-async def stop_script(client, message):
-    if not await check_auth(client, message): return
-    try:
-        filename = message.command[1]
-        if filename in running_processes:
-            running_processes[filename].terminate()
-            del running_processes[filename]
-            await message.reply_text(f"🛑 Stopped `{filename}`.")
-    except:
-        await message.reply_text("⚠️ Usage: `/stop filename.py`")
+async def start(update, context):
+    await update.message.reply_text(f"🔥 **F4X Cloud Bot Ready!**\n\nNaeem bhai, link bhejien ya gane ka naam likhein.\n\n{OWNER_TAG}")
 
-@app.on_message(filters.document)
-async def run_script(client, message):
-    if not await check_auth(client, message): return
-    if not message.document.file_name.endswith(".py"): return
-
-    file_name = message.document.file_name
-    path = await message.download()
+async def handle_message(update, context):
+    query = update.message.text
+    if "playlist" in query:
+        return await update.message.reply_text("❌ Naeem bhai, playlist link mat bhejien. Analyzing atat jayegi.")
+    
+    is_url = query.startswith("http")
+    status = await update.message.reply_text("🔍 Analyzing request on Cloud...")
     
     try:
-        log_out = open(f"{file_name}.log", "w")
-        proc = await asyncio.create_subprocess_exec(sys.executable, path, stdout=log_out, stderr=log_out)
-        running_processes[file_name] = proc
-        await message.reply_text(f"✅ **Started:** `{file_name}`\n📝 Logs: `/logs {file_name}`")
+        search_query = query if is_url else f"ytsearch1:{query}"
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+            if 'entries' in info: info = info['entries'][0]
+        
+        video_url = info['webpage_url']
+        buttons = [
+            [InlineKeyboardButton("🎵 Audio", callback_data=f"mp3|audio|{video_url}")],
+            [InlineKeyboardButton("🎥 720p", callback_data=f"mp4|22|{video_url}"),
+             InlineKeyboardButton("🎥 1080p", callback_data=f"mp4|137|{video_url}")]
+        ]
+        await status.edit_text(f"🎬 {info['title'][:40]}...\n\nQuality select karein:", reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
-        await message.reply_text(f"❌ **Error:** {e}")
+        await status.edit_text("❌ Error: Single video link bhejien.")
 
-if __name__ == "__main__":
-    # Web server ko background thread mein start karein
-    Thread(target=run_web).start()
-    print("✅ Web Server & Bot Starting...")
-    app.run()
+async def button_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    mode, f_id, url = query.data.split("|")
+    status_msg = await query.message.reply_text("⏳ F4X Cloud Downloading...")
+
+    try:
+        loop = asyncio.get_event_loop()
+        file_path = await loop.run_in_executor(None, download_engine, url, mode, f_id if f_id != 'audio' else None)
+        
+        await status_msg.edit_text("📤 Uploading...")
+        with open(file_path, 'rb') as f:
+            if mode == 'mp3':
+                await query.message.reply_audio(audio=f, caption=OWNER_TAG)
+            else:
+                await query.message.reply_video(video=f, caption=OWNER_TAG)
+        
+        if os.path.exists(file_path): os.remove(file_path)
+        await status_msg.delete()
+    except Exception as e:
+        await status_msg.edit_text(f"⚠️ Error: {str(e)[:100]}")
+
+if __name__ == '__main__':
+    keep_alive() # Server start
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    print("✅ Bot is Online for Naeem!")
+    app.run_polling()
