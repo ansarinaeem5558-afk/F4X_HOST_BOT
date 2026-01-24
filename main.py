@@ -114,4 +114,58 @@ async def get_logs(client, message):
 
     try:
         filename = message.command[1]
-        log_file = f
+        log_file = f"{filename}.log"
+        
+        if os.path.exists(log_file):
+            await message.reply_document(log_file, caption=f"📄 Logs: `{filename}`")
+        else:
+            await message.reply_text("❌ Log file not found.")
+    except IndexError:
+        await message.reply_text("⚠️ Usage: `/logs filename.py`")
+
+# --- 🚀 FILE RUNNER (Clean Method) ---
+
+@app.on_message(filters.document)
+async def run_script(client, message):
+    if not await check_auth(client, message):
+        return
+
+    if not message.document.file_name.endswith(".py"):
+        await message.reply_text("⚠️ Only `.py` files allowed.")
+        return
+
+    file_name = message.document.file_name
+    
+    # Check if already running
+    if file_name in running_processes:
+        await message.reply_text(f"⚠️ `{file_name}` is already running! Use `/stop` first.")
+        return
+
+    msg = await message.reply_text(f"📥 Downloading `{file_name}`...")
+    path = await message.download()
+
+    try:
+        # Standard Subprocess (No Shell=True, No Hidden Tricks)
+        # Security Note: Hum seedha Python interpreter call kar rahe hain
+        log_out = open(f"{file_name}.log", "w")
+        
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, path,
+            stdout=log_out,
+            stderr=log_out
+        )
+        
+        running_processes[file_name] = proc
+        
+        await msg.edit(
+            f"✅ **Started Successfully!**\n\n"
+            f"📄 File: `{file_name}`\n"
+            f"🔧 PID: `{proc.pid}`\n"
+            f"📝 Logs: `/logs {file_name}`"
+        )
+        
+    except Exception as e:
+        await msg.edit(f"❌ **Error:** {e}")
+
+print("✅ Bot Started Successfully...")
+app.run()
